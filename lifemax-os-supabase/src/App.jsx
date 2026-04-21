@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { storage, isConfigured } from "./supabase.js";
+import { storage, ideas as ideasApi, isConfigured } from "./supabase.js";
 import IdeasView from "./ideas/IdeasView.jsx";
 
 // ========== DEFAULTS ==========
@@ -275,33 +275,74 @@ export default function App() {
   };
   const todayJournal = journal[todayStr] || { targets: ["", "", ""], wins: ["", "", ""], lesson: "" };
 
-  const exportData = () => {
-    const payload = { recurring, oneTime, habits, weeklyTargets, metrics, habitLog, journal, exported: new Date().toISOString() };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `lifemax-backup-${dateKey(new Date())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  const exportData = async () => {
+    setExporting(true);
+    try {
+      const allIdeas = await ideasApi.list();
+      const payload = {
+        version: 2,
+        exported: new Date().toISOString(),
+        dashboard: { recurring, oneTime, habits, weeklyTargets, metrics, habitLog, journal },
+        ideas: allIdeas,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `lifemax-backup-${dateKey(new Date())}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Export failed — check console.");
+    }
+    setExporting(false);
   };
 
   const importData = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setImporting(true);
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const d = JSON.parse(ev.target.result);
-        if (d.recurring) setRecurring(d.recurring);
-        if (d.oneTime) setOneTime(d.oneTime);
-        if (d.habits) setHabits(d.habits);
-        if (d.weeklyTargets) setWeeklyTargets(d.weeklyTargets);
-        if (d.metrics) setMetrics(d.metrics);
-        if (d.habitLog) setHabitLog(d.habitLog);
-        if (d.journal) setJournal(d.journal);
-        alert("Imported successfully.");
-      } catch { alert("Invalid backup file."); }
+
+        // Support both v1 (flat) and v2 (nested) backup format
+        const dash = d.version === 2 ? d.dashboard : d;
+        if (dash.recurring)     setRecurring(dash.recurring);
+        if (dash.oneTime)       setOneTime(dash.oneTime);
+        if (dash.habits)        setHabits(dash.habits);
+        if (dash.weeklyTargets) setWeeklyTargets(dash.weeklyTargets);
+        if (dash.metrics)       setMetrics(dash.metrics);
+        if (dash.habitLog)      setHabitLog(dash.habitLog);
+        if (dash.journal)       setJournal(dash.journal);
+
+        // Restore ideas (v2 only)
+        if (d.version === 2 && Array.isArray(d.ideas) && d.ideas.length > 0) {
+          let restored = 0;
+          for (const idea of d.ideas) {
+            try {
+              // Strip the id so Supabase generates a fresh one (avoids PK conflicts)
+              const { id, ...rest } = idea;
+              await ideasApi.create(rest);
+              restored++;
+            } catch (err) {
+              console.warn("Skipped idea:", idea.title, err);
+            }
+          }
+          alert(`Imported successfully.\nDashboard data restored.\n${restored} idea${restored !== 1 ? "s" : ""} restored.`);
+        } else {
+          alert("Dashboard data imported successfully.");
+        }
+      } catch (err) {
+        console.error("Import failed:", err);
+        alert("Invalid backup file — could not parse JSON.");
+      }
+      setImporting(false);
     };
     reader.readAsText(file);
     e.target.value = "";
@@ -638,14 +679,25 @@ export default function App() {
       <div style={{ padding: 14, background: "rgba(255,255,255,0.02)", borderRadius: 8, marginTop: 20 }}>
         <div style={{ fontSize: "0.68rem", color: "#888", letterSpacing: 2.5, fontFamily: "monospace", fontWeight: 700, marginBottom: 10 }}>BACKUP / RESTORE</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={exportData} style={{ ...btnSecondary, flex: 1 }}>⬇ Export JSON</button>
-          <label style={{ ...btnSecondary, flex: 1, textAlign: "center", cursor: "pointer" }}>
-            ⬆ Import JSON
-            <input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
+          <button
+            onClick={exportData}
+            disabled={exporting}
+            style={{ ...btnSecondary, flex: 1, opacity: exporting ? 0.5 : 1 }}
+          >
+            {exporting ? "Exporting..." : "⬇ Export JSON"}
+          </button>
+          <label style={{
+            ...btnSecondary, flex: 1, textAlign: "center",
+            cursor: importing ? "default" : "pointer",
+            opacity: importing ? 0.5 : 1,
+          }}>
+            {importing ? "Importing..." : "⬆ Import JSON"}
+            <input type="file" accept=".json" onChange={importData} disabled={importing} style={{ display: "none" }} />
           </label>
         </div>
-        <div style={{ fontSize: "0.7rem", color: "#555", marginTop: 8, lineHeight: 1.5 }}>
-          Data syncs across all devices via Supabase. Export for offline backup.
+        <div style={{ fontSize: "0.68rem", color: "#444", marginTop: 10, lineHeight: 1.6, fontFamily: "'JetBrains Mono', monospace" }}>
+          Backup includes: schedule · habits · journal · targets · metrics · all ideas + notes + AI analyses.<br/>
+          Import restores everything — ideas get new IDs so duplicates won't conflict.
         </div>
       </div>
     </div>
