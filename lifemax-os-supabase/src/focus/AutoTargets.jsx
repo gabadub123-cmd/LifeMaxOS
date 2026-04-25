@@ -52,13 +52,19 @@ export default function AutoTargets({ todayTargets, onUpdateTarget, ideas, dayOf
     setAiLoading(false);
   };
 
-  const applyTarget = (index, text) => {
+  const toggleTarget = (index, text) => {
     if (!onUpdateTarget) return;
-    // Find the first empty slot, or overwrite the slot at `index`
     const targets = [...(todayTargets || ['', '', ''])];
-    const emptyIdx = targets.findIndex((t, i) => i >= 0 && !t?.trim());
-    const slot = emptyIdx !== -1 ? emptyIdx : index;
-    onUpdateTarget(slot, text);
+    const existingIdx = targets.indexOf(text);
+    if (existingIdx !== -1) {
+      // Already applied — deselect (clear that slot)
+      onUpdateTarget(existingIdx, '');
+    } else {
+      // Apply to first empty slot, else overwrite slot at `index`
+      const emptyIdx = targets.findIndex(t => !t?.trim());
+      const slot = emptyIdx !== -1 ? emptyIdx : index;
+      onUpdateTarget(slot, text);
+    }
   };
 
   const applyAll = () => {
@@ -137,21 +143,28 @@ export default function AutoTargets({ todayTargets, onUpdateTarget, ideas, dayOf
                 background: alreadyApplied ? 'rgba(118,255,3,0.05)' : 'rgba(255,255,255,0.025)',
                 border: `1px solid ${alreadyApplied ? 'rgba(118,255,3,0.2)' : 'rgba(255,255,255,0.05)'}`,
                 borderRadius: 7,
-                cursor: alreadyApplied ? 'default' : 'pointer',
+                cursor: 'pointer',
                 transition: 'all 0.15s',
               }}
-              onClick={() => !alreadyApplied && applyTarget(i, suggestion)}
-              onMouseEnter={e => { if (!alreadyApplied) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-              onMouseLeave={e => { if (!alreadyApplied) e.currentTarget.style.background = 'rgba(255,255,255,0.025)'; }}
+              onClick={() => toggleTarget(i, suggestion)}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = alreadyApplied ? 'rgba(118,255,3,0.02)' : 'rgba(255,255,255,0.05)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = alreadyApplied ? 'rgba(118,255,3,0.05)' : 'rgba(255,255,255,0.025)';
+              }}
             >
-              <div style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: '0.62rem',
-                color: alreadyApplied ? '#76FF03' : '#555',
-                marginTop: 1,
-                flexShrink: 0,
-                fontWeight: 700,
-              }}>
+              <div
+                title={alreadyApplied ? 'Click to remove from targets' : 'Click to add to targets'}
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '0.62rem',
+                  color: alreadyApplied ? '#76FF03' : '#555',
+                  marginTop: 1,
+                  flexShrink: 0,
+                  fontWeight: 700,
+                }}
+              >
                 {alreadyApplied ? '✓' : `${i + 1}.`}
               </div>
               <div style={{
