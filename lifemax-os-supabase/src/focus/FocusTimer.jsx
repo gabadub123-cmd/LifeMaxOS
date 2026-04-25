@@ -1,5 +1,19 @@
 import { useState } from 'react';
 import { WORK_DURATION, BREAK_DURATION, PHASES } from './constants';
+import { focus as focusApi } from '../supabase';
+
+const logInput = {
+  width: '100%',
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 6,
+  color: '#fff',
+  fontFamily: "'Outfit', sans-serif",
+  fontSize: '0.82rem',
+  padding: '9px 12px',
+  outline: 'none',
+  boxSizing: 'border-box',
+};
 
 const RING_R = 82;
 const CIRCUMFERENCE = 2 * Math.PI * RING_R; // ≈ 515.2
@@ -10,9 +24,39 @@ function formatTime(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-export default function FocusTimer({ timerState, onStart, onPause, onResume, onStop, onSkipBreak }) {
+export default function FocusTimer({ timerState, onStart, onPause, onResume, onStop, onSkipBreak, onSessionSaved }) {
   const [taskInput, setTaskInput] = useState('');
   const [starting, setStarting] = useState(false);
+
+  // Manual log state
+  const [showLog, setShowLog] = useState(false);
+  const [logForm, setLogForm] = useState({ task: '', duration: '', time: '' });
+  const [logging, setLogging] = useState(false);
+  const [logDone, setLogDone] = useState(false);
+
+  const handleLogSubmit = async () => {
+    if (!logForm.duration || Number(logForm.duration) <= 0) return;
+    setLogging(true);
+    // Build started_at from time input if provided, else now - duration
+    let started_at = null;
+    if (logForm.time) {
+      const [h, m] = logForm.time.split(':').map(Number);
+      const d = new Date();
+      d.setHours(h, m, 0, 0);
+      started_at = d.toISOString();
+    }
+    await focusApi.logManualSession({
+      task_label: logForm.task.trim() || null,
+      duration_min: Number(logForm.duration),
+      started_at,
+      source: 'manual',
+    });
+    setLogging(false);
+    setLogDone(true);
+    setLogForm({ task: '', duration: '', time: '' });
+    if (onSessionSaved) onSessionSaved();
+    setTimeout(() => { setLogDone(false); setShowLog(false); }, 1800);
+  };
 
   const { phase, running, remaining, taskLabel } = timerState;
   const total = phase === 'break' ? BREAK_DURATION : WORK_DURATION;
@@ -307,6 +351,136 @@ export default function FocusTimer({ timerState, onStart, onPause, onResume, onS
           </>
         )}
       </div>
+
+      {/* Manual log — only when idle */}
+      {phase === 'idle' && (
+        <div style={{ width: '100%', maxWidth: 340 }}>
+          {!showLog ? (
+            <button
+              onClick={() => setShowLog(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#444',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '0.62rem',
+                letterSpacing: '1px',
+                cursor: 'pointer',
+                padding: '4px 0',
+                textDecoration: 'underline',
+                textDecorationColor: '#333',
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => e.target.style.color = '#888'}
+              onMouseLeave={e => e.target.style.color = '#444'}
+            >
+              ↳ log a past session
+            </button>
+          ) : (
+            <div style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              borderRadius: 8,
+              padding: '14px 16px',
+              animation: 'fadeIn 0.2s ease',
+            }}>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: '0.62rem',
+                color: '#666',
+                letterSpacing: '1.5px',
+                marginBottom: 10,
+              }}>
+                LOG PAST SESSION
+              </div>
+
+              {logDone ? (
+                <div style={{
+                  textAlign: 'center',
+                  color: '#76FF03',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: '0.78rem',
+                  padding: '8px 0',
+                }}>
+                  ✓ logged
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <input
+                      type="text"
+                      value={logForm.task}
+                      onChange={e => setLogForm(f => ({ ...f, task: e.target.value }))}
+                      placeholder="What did you work on?"
+                      autoFocus
+                      style={logInput}
+                    />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="number"
+                          min={1}
+                          max={480}
+                          value={logForm.duration}
+                          onChange={e => setLogForm(f => ({ ...f, duration: e.target.value }))}
+                          placeholder="Duration (min)"
+                          onKeyDown={e => e.key === 'Enter' && handleLogSubmit()}
+                          style={{ ...logInput, textAlign: 'center' }}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="time"
+                          value={logForm.time}
+                          onChange={e => setLogForm(f => ({ ...f, time: e.target.value }))}
+                          title="Start time (optional — defaults to now minus duration)"
+                          style={logInput}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                    <button
+                      onClick={() => { setShowLog(false); setLogForm({ task: '', duration: '', time: '' }); }}
+                      style={{
+                        flex: 1,
+                        background: 'rgba(255,255,255,0.04)',
+                        border: 'none',
+                        color: '#666',
+                        fontFamily: "'Outfit', sans-serif",
+                        fontSize: '0.78rem',
+                        padding: '8px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleLogSubmit}
+                      disabled={logging || !logForm.duration}
+                      style={{
+                        flex: 2,
+                        background: logging || !logForm.duration ? 'rgba(118,255,3,0.2)' : '#76FF03',
+                        border: 'none',
+                        color: '#000',
+                        fontFamily: "'Outfit', sans-serif",
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        padding: '8px',
+                        borderRadius: 6,
+                        cursor: logging || !logForm.duration ? 'default' : 'pointer',
+                      }}
+                    >
+                      {logging ? 'Saving...' : '+ Log Session'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Session stats hint */}
       {phase === 'work' && (

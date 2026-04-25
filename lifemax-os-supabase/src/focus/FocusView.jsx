@@ -87,6 +87,7 @@ export default function FocusView({ habits, todayTargets, onUpdateTarget, todays
             onResume={resume}
             onStop={stop}
             onSkipBreak={skipBreak}
+            onSessionSaved={loadSessions}
           />
         </div>
 

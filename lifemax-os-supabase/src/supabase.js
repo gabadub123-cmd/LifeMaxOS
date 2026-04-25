@@ -202,6 +202,29 @@ export const focus = {
     return data || []
   },
 
+  async logManualSession({ task_label, duration_min, started_at, source }) {
+    if (!supabase) return null
+    const durationSec = Math.round(Number(duration_min) * 60)
+    const start = started_at || new Date(Date.now() - durationSec * 1000).toISOString()
+    const end   = new Date(new Date(start).getTime() + durationSec * 1000).toISOString()
+    const { data, error } = await supabase
+      .from('focus_sessions')
+      .insert({
+        user_id: USER_ID,
+        started_at: start,
+        ended_at: end,
+        duration_sec: durationSec,
+        type: 'work',
+        task_label: task_label || null,
+        source: source || 'manual',
+        interrupted: false,
+      })
+      .select()
+      .single()
+    if (error) { console.error('focus.logManualSession error:', error); return null }
+    return data
+  },
+
   async deleteSession(id) {
     if (!supabase) return
     const { error } = await supabase
