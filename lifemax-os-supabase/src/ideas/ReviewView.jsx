@@ -28,11 +28,12 @@ export default function ReviewView({ ideas, onUpdate, onAdd }) {
     STAGES.forEach(s => counts[s.key] = 0);
     activeIdeas.forEach(i => { counts[i.stage] = (counts[i.stage] || 0) + 1; });
 
-    // Weighted revenue potential
-    const revValues = { low: 500, medium: 1750, high: 6500, massive: 15000 };
+    // Weighted revenue potential — uses monthly_equiv from REVENUE_OPTIONS
+    // One-time options get their annualised monthly equivalent
     const totalPotential = activeIdeas.reduce((sum, idea) => {
       const score = calcScore(idea);
-      const revVal = revValues[idea.revenue_potential] || 1750;
+      const revOpt = REVENUE_OPTIONS.find(r => r.key === idea.revenue_potential);
+      const revVal = revOpt ? revOpt.monthly_equiv : 1750;
       return sum + (score / 100) * revVal;
     }, 0);
 

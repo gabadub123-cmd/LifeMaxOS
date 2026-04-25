@@ -33,8 +33,8 @@ export default function ListView({ ideas, onSelect, totalCount = 0, onAdd }) {
           vb = STAGES.findIndex(s => s.key === b.stage);
           return sortAsc ? va - vb : vb - va;
         case 'revenue':
-          va = REVENUE_OPTIONS.findIndex(r => r.key === a.revenue_potential);
-          vb = REVENUE_OPTIONS.findIndex(r => r.key === b.revenue_potential);
+          va = (REVENUE_OPTIONS.find(r => r.key === a.revenue_potential) || {}).value || 0;
+          vb = (REVENUE_OPTIONS.find(r => r.key === b.revenue_potential) || {}).value || 0;
           return sortAsc ? va - vb : vb - va;
         case 'effort':
           va = EFFORT_OPTIONS.findIndex(e => e.key === a.effort);

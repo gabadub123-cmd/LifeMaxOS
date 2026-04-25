@@ -237,9 +237,16 @@ export default function AddIdeaModal({ onCreate, onClose }) {
             <div style={{ flex: 1, minWidth: 120 }}>
               <label style={labelStyle}>Revenue</label>
               <select value={form.revenue_potential} onChange={e => update('revenue_potential', e.target.value)} style={selectStyle}>
-                {REVENUE_OPTIONS.map(r => (
-                  <option key={r.key} value={r.key}>{r.icon} {r.label}</option>
-                ))}
+                <optgroup label="Monthly / Recurring">
+                  {REVENUE_OPTIONS.filter(r => r.group === 'recurring').map(r => (
+                    <option key={r.key} value={r.key}>{r.icon} {r.label}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="One-time Sale">
+                  {REVENUE_OPTIONS.filter(r => r.group === 'one-time').map(r => (
+                    <option key={r.key} value={r.key}>{r.icon} {r.label}</option>
+                  ))}
+                </optgroup>
               </select>
             </div>
             <div style={{ flex: 1, minWidth: 120 }}>

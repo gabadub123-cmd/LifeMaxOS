@@ -25,10 +25,16 @@ export const CATEGORIES = {
 export const CATEGORY_KEYS = Object.keys(CATEGORIES);
 
 export const REVENUE_OPTIONS = [
-  { key: 'low',     label: '<€500/mo',    icon: '€',    value: 10  },
-  { key: 'medium',  label: '€500-3k/mo',  icon: '€€',   value: 30  },
-  { key: 'high',    label: '€3-10k/mo',   icon: '€€€',  value: 60  },
-  { key: 'massive', label: '€10k+/mo',    icon: '€€€€', value: 100 },
+  // ── Monthly / Recurring ──
+  { key: 'low',             label: '<€500/mo',       icon: '€',      value: 10,  monthly_equiv: 250,   group: 'recurring' },
+  { key: 'medium',          label: '€500–3k/mo',     icon: '€€',     value: 30,  monthly_equiv: 1750,  group: 'recurring' },
+  { key: 'high',            label: '€3–10k/mo',      icon: '€€€',    value: 60,  monthly_equiv: 6500,  group: 'recurring' },
+  { key: 'massive',         label: '€10k+/mo',       icon: '€€€€',   value: 100, monthly_equiv: 15000, group: 'recurring' },
+  // ── One-time Sale ──
+  { key: 'one-time-small',  label: '€100–500 once',  icon: '1×',     value: 6,   monthly_equiv: 100,   group: 'one-time' },
+  { key: 'one-time-medium', label: '€500–2k once',   icon: '1×€€',   value: 15,  monthly_equiv: 500,   group: 'one-time' },
+  { key: 'one-time-large',  label: '€2k–10k once',   icon: '1×€€€',  value: 30,  monthly_equiv: 1500,  group: 'one-time' },
+  { key: 'one-time-xl',     label: '€10k+ once',     icon: '1×€€€€', value: 55,  monthly_equiv: 5000,  group: 'one-time' },
 ];
 
 export const EFFORT_OPTIONS = [

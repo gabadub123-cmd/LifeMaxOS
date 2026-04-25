@@ -299,11 +299,20 @@ export default function IdeaDrawer({ idea, onUpdate, onDelete, onClose, onDuplic
                 onChange={e => onUpdate({ revenue_potential: e.target.value })}
                 style={chipSelectStyle}
               >
-                {REVENUE_OPTIONS.map(r => (
-                  <option key={r.key} value={r.key} style={{ background: '#111', color: '#fff' }}>
-                    {r.icon} {r.label}
-                  </option>
-                ))}
+                <optgroup label="Monthly / Recurring">
+                  {REVENUE_OPTIONS.filter(r => r.group === 'recurring').map(r => (
+                    <option key={r.key} value={r.key} style={{ background: '#111', color: '#fff' }}>
+                      {r.icon} {r.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="One-time Sale">
+                  {REVENUE_OPTIONS.filter(r => r.group === 'one-time').map(r => (
+                    <option key={r.key} value={r.key} style={{ background: '#111', color: '#fff' }}>
+                      {r.icon} {r.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
 
               {/* Effort chip */}
