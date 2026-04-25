@@ -104,7 +104,7 @@ export default function FocusView({ habits, todayTargets, onUpdateTarget, todays
             onSelectTask={handleSelectTask}
             activeTaskId={activeTaskId}
           />
-          <SessionHistory sessions={sessions} />
+          <SessionHistory sessions={sessions} onRefresh={loadSessions} />
         </div>
       </div>
     </div>

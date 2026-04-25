@@ -202,6 +202,15 @@ export const focus = {
     return data || []
   },
 
+  async deleteSession(id) {
+    if (!supabase) return
+    const { error } = await supabase
+      .from('focus_sessions')
+      .delete()
+      .eq('id', id)
+    if (error) console.error('focus.deleteSession error:', error)
+  },
+
   subscribeSessions(callback) {
     if (!supabase) return () => {}
     const channel = supabase

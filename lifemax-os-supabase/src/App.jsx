@@ -156,6 +156,8 @@ export default function App() {
   // Form state
   const [eventForm, setEventForm] = useState({ mode: "one-time", title: "", date: "", start: "", end: "", dayOfWeek: 0, tag: "COMPETE" });
   const [habitForm, setHabitForm] = useState({ title: "", category: "BODY", time: "", duration_min: "", active_days: [] });
+  const [editingHabitId, setEditingHabitId] = useState(null);
+  const [editHabitForm, setEditHabitForm] = useState({});
   const [targetForm, setTargetForm] = useState({ title: "", target: 0 });
 
   // Map of key -> setter for realtime updates from other devices
@@ -297,7 +299,25 @@ export default function App() {
       return { ...f, active_days: next };
     });
   };
-  const removeHabit = (id) => setHabits((p) => p.filter((h) => h.id !== id));
+  const removeHabit = (id) => { setHabits((p) => p.filter((h) => h.id !== id)); if (editingHabitId === id) setEditingHabitId(null); };
+  const startEditHabit = (h) => { setEditingHabitId(h.id); setEditHabitForm({ title: h.title, category: h.category, time: h.time || "", duration_min: h.duration_min ? String(h.duration_min) : "", active_days: h.active_days || [] }); };
+  const saveEditHabit = () => {
+    if (!editHabitForm.title) return;
+    setHabits((p) => p.map((h) => {
+      if (h.id !== editingHabitId) return h;
+      const updated = { ...h, title: editHabitForm.title, category: editHabitForm.category };
+      if (editHabitForm.time && editHabitForm.duration_min) {
+        updated.time = editHabitForm.time;
+        updated.duration_min = parseInt(editHabitForm.duration_min, 10);
+        updated.active_days = editHabitForm.active_days.length > 0 && editHabitForm.active_days.length < 7 ? [...editHabitForm.active_days].sort() : undefined;
+      } else {
+        delete updated.time; delete updated.duration_min; delete updated.active_days;
+      }
+      return updated;
+    }));
+    setEditingHabitId(null);
+  };
+  const toggleEditHabitDay = (d) => setEditHabitForm((f) => { const next = f.active_days.includes(d) ? f.active_days.filter((x) => x !== d) : [...f.active_days, d]; return { ...f, active_days: next }; });
 
   const updateTarget = (id, field, value) => {
     setWeeklyTargets((p) => p.map((t) => t.id === id ? { ...t, [field]: Number(value) } : t));
@@ -688,19 +708,50 @@ export default function App() {
                 ? h.active_days.map((d) => DAYS[d]).join("·")
                 : "DAILY")
             : null;
+          const isEditing = editingHabitId === h.id;
+
+          if (isEditing) {
+            return (
+              <div key={h.id} style={{ padding: 12, background: "rgba(255,61,0,0.04)", border: "1px solid rgba(255,61,0,0.15)", borderRadius: 6, marginBottom: 6 }}>
+                <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                  <input value={editHabitForm.title} onChange={(e) => setEditHabitForm({ ...editHabitForm, title: e.target.value })} placeholder="Habit title..." style={{ ...inputStd, flex: "2 1 200px" }} autoFocus />
+                  <select value={editHabitForm.category} onChange={(e) => setEditHabitForm({ ...editHabitForm, category: e.target.value })} style={{ ...inputStd, flex: "1 1 110px" }}>
+                    {Object.keys(TAG_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.62rem", color: "#555", fontFamily: "monospace", letterSpacing: 1 }}>TIME:</span>
+                  <input type="time" value={editHabitForm.time} onChange={(e) => setEditHabitForm({ ...editHabitForm, time: e.target.value })} style={{ ...inputStd, flex: "0 0 110px" }} />
+                  <input type="number" min={1} max={480} value={editHabitForm.duration_min} onChange={(e) => setEditHabitForm({ ...editHabitForm, duration_min: e.target.value })} placeholder="min" style={{ ...inputStd, flex: "0 0 70px", textAlign: "center" }} />
+                  <span style={{ fontSize: "0.6rem", color: "#444", fontFamily: "monospace" }}>min</span>
+                  <div style={{ display: "flex", gap: 3, marginLeft: "auto", flexWrap: "wrap" }}>
+                    {DAYS.map((d, i) => { const active = editHabitForm.active_days.includes(i); return (<button key={i} onClick={() => toggleEditHabitDay(i)} style={{ background: active ? "rgba(118,255,3,0.18)" : "rgba(255,255,255,0.04)", border: `1px solid ${active ? "rgba(118,255,3,0.4)" : "rgba(255,255,255,0.06)"}`, color: active ? "#76FF03" : "#666", fontFamily: "monospace", fontSize: "0.6rem", fontWeight: 700, padding: "4px 7px", borderRadius: 4, cursor: "pointer" }} title={DAYS_FULL[i]}>{d.toUpperCase()}</button>); })}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                  <button onClick={() => setEditingHabitId(null)} style={{ ...btnSecondary, fontSize: "0.78rem", padding: "6px 14px" }}>Cancel</button>
+                  <button onClick={saveEditHabit} style={{ ...btnPrimary, background: "#76FF03", fontSize: "0.78rem", padding: "6px 14px" }}>Save</button>
+                </div>
+              </div>
+            );
+          }
+
           return (
-            <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: 4, marginBottom: 4 }}>
+            <div key={h.id} onClick={() => startEditHabit(h)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", background: "rgba(255,255,255,0.02)", borderRadius: 4, marginBottom: 4, cursor: "pointer", transition: "background 0.15s" }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.02)"}
+            >
               {hasTime && (
-                <span style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "#666", minWidth: 88 }}>
+                <span style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "#666", minWidth: 88, flexShrink: 0 }}>
                   {h.time} · {h.duration_min}m
                 </span>
               )}
               <span style={{ flex: 1, fontSize: "0.88rem", color: "#ddd" }}>{h.title}</span>
               {hasTime && (
-                <span style={{ fontSize: "0.55rem", color: "#555", fontFamily: "monospace", letterSpacing: 1 }}>{dayLabel}</span>
+                <span style={{ fontSize: "0.55rem", color: "#555", fontFamily: "monospace", letterSpacing: 1, flexShrink: 0 }}>{dayLabel}</span>
               )}
-              <span style={{ fontSize: "0.6rem", color: TAG_COLORS[h.category] || "#888", fontFamily: "monospace", fontWeight: 700 }}>{h.category}</span>
-              <button onClick={() => removeHabit(h.id)} style={btnRemove}>×</button>
+              <span style={{ fontSize: "0.6rem", color: TAG_COLORS[h.category] || "#888", fontFamily: "monospace", fontWeight: 700, flexShrink: 0 }}>{h.category}</span>
+              <button onClick={(e) => { e.stopPropagation(); removeHabit(h.id); }} style={btnRemove} title="Delete habit">×</button>
             </div>
           );
         })}
