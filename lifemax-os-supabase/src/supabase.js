@@ -159,6 +159,64 @@ export const ideas = {
   },
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Focus sessions (FOCUS tab)
+// Table: focus_sessions (see focus-setup.sql)
+// ──────────────────────────────────────────────────────────────────
+
+export const focus = {
+  async createSession(session) {
+    if (!supabase) return null
+    const { data, error } = await supabase
+      .from('focus_sessions')
+      .insert({ ...session, user_id: USER_ID })
+      .select()
+      .single()
+    if (error) { console.error('focus.createSession error:', error); return null }
+    return data
+  },
+
+  async updateSession(id, patch) {
+    if (!supabase) return null
+    const { data, error } = await supabase
+      .from('focus_sessions')
+      .update(patch)
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) { console.error('focus.updateSession error:', error); return null }
+    return data
+  },
+
+  async listSessionsToday() {
+    if (!supabase) return []
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const { data, error } = await supabase
+      .from('focus_sessions')
+      .select('*')
+      .eq('user_id', USER_ID)
+      .gte('started_at', todayStart.toISOString())
+      .order('started_at', { ascending: true })
+    if (error) { console.error('focus.listSessionsToday error:', error); return [] }
+    return data || []
+  },
+
+  subscribeSessions(callback) {
+    if (!supabase) return () => {}
+    const channel = supabase
+      .channel('focus-sessions-realtime')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'focus_sessions',
+        filter: `user_id=eq.${USER_ID}`,
+      }, (payload) => callback(payload))
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  },
+}
+
 // ── localStorage fallback ──
 
 function getLocalIdeas() {

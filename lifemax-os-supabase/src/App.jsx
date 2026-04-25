@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { storage, ideas as ideasApi, isConfigured } from "./supabase.js";
 import IdeasView from "./ideas/IdeasView.jsx";
+import FocusView from "./focus/FocusView.jsx";
 
 // ========== DEFAULTS ==========
 const DEFAULT_SCHEDULE = [
@@ -59,12 +60,37 @@ const dateKey = (d) => {
   return `${y}-${m}-${day}`;
 };
 
-function buildDaySchedule(date, recurring, oneTime, template) {
+function buildDaySchedule(date, recurring, oneTime, template, habits = []) {
   const dayOfWeek = date.getDay();
   const dateStr = dateKey(date);
   const todaysRecurring = recurring.filter((e) => e.dayOfWeek === dayOfWeek).map((e) => ({ ...e, fixed: true, source: "recurring" }));
   const todaysOneTime = oneTime.filter((e) => e.date === dateStr).map((e) => ({ ...e, fixed: true, source: "one-time" }));
-  const fixedEvents = [...todaysRecurring, ...todaysOneTime].sort((a, b) => timeToMin(a.start) - timeToMin(b.start));
+
+  // Timed habits — those with `time` and `duration_min` set, active today
+  const timedHabits = (habits || [])
+    .filter((h) => h.time && h.duration_min)
+    .filter((h) => {
+      const days = h.active_days && h.active_days.length > 0 ? h.active_days : [0, 1, 2, 3, 4, 5, 6];
+      return days.includes(dayOfWeek);
+    })
+    .map((h) => {
+      const [hh, mm] = h.time.split(":").map(Number);
+      const endMin = hh * 60 + (mm || 0) + Number(h.duration_min);
+      const endH = Math.floor(endMin / 60);
+      const endM = endMin % 60;
+      return {
+        id: h.id,
+        title: h.title,
+        start: h.time,
+        end: `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`,
+        tag: h.category,
+        color: TAG_COLORS[h.category] || "#888",
+        fixed: true,
+        source: "habit",
+      };
+    });
+
+  const fixedEvents = [...todaysRecurring, ...todaysOneTime, ...timedHabits].sort((a, b) => timeToMin(a.start) - timeToMin(b.start));
   const result = [...fixedEvents];
   template.forEach((t) => {
     const ts = timeToMin(t.start), te = timeToMin(t.end);
@@ -129,7 +155,7 @@ export default function App() {
 
   // Form state
   const [eventForm, setEventForm] = useState({ mode: "one-time", title: "", date: "", start: "", end: "", dayOfWeek: 0, tag: "COMPETE" });
-  const [habitForm, setHabitForm] = useState({ title: "", category: "BODY" });
+  const [habitForm, setHabitForm] = useState({ title: "", category: "BODY", time: "", duration_min: "", active_days: [] });
   const [targetForm, setTargetForm] = useState({ title: "", target: 0 });
 
   // Map of key -> setter for realtime updates from other devices
@@ -218,7 +244,7 @@ export default function App() {
   }, [currentDate, currentTime, view]);
 
   const todayStr = dateKey(currentDate);
-  const todaysSchedule = useMemo(() => buildDaySchedule(currentDate, recurring, oneTime, DEFAULT_SCHEDULE), [currentDate, recurring, oneTime]);
+  const todaysSchedule = useMemo(() => buildDaySchedule(currentDate, recurring, oneTime, DEFAULT_SCHEDULE, habits), [currentDate, recurring, oneTime, habits]);
 
   const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
   const isViewingToday = dateKey(currentDate) === dateKey(new Date());
@@ -254,8 +280,22 @@ export default function App() {
 
   const addHabit = () => {
     if (!habitForm.title) return;
-    setHabits((p) => [...p, { id: `h${Date.now()}`, title: habitForm.title, category: habitForm.category }]);
-    setHabitForm({ title: "", category: "BODY" });
+    const habit = { id: `h${Date.now()}`, title: habitForm.title, category: habitForm.category };
+    if (habitForm.time && habitForm.duration_min) {
+      habit.time = habitForm.time;
+      habit.duration_min = parseInt(habitForm.duration_min, 10);
+      if (habitForm.active_days.length > 0 && habitForm.active_days.length < 7) {
+        habit.active_days = [...habitForm.active_days].sort();
+      }
+    }
+    setHabits((p) => [...p, habit]);
+    setHabitForm({ title: "", category: "BODY", time: "", duration_min: "", active_days: [] });
+  };
+  const toggleHabitFormDay = (d) => {
+    setHabitForm((f) => {
+      const next = f.active_days.includes(d) ? f.active_days.filter((x) => x !== d) : [...f.active_days, d];
+      return { ...f, active_days: next };
+    });
   };
   const removeHabit = (id) => setHabits((p) => p.filter((h) => h.id !== id));
 
@@ -439,6 +479,7 @@ export default function App() {
                 {s.title}
                 {s.source === "recurring" && <span style={{ marginLeft: 8, fontSize: "0.7rem", color: "#666", fontFamily: "monospace" }}>↻</span>}
                 {s.source === "one-time" && <span style={{ marginLeft: 8, fontSize: "0.7rem", color: "#666", fontFamily: "monospace" }}>◆</span>}
+                {s.source === "habit" && <span style={{ marginLeft: 8, fontSize: "0.7rem", color: "#666", fontFamily: "monospace" }} title="Timed habit">●</span>}
               </div>
               <span style={{ fontSize: "0.6rem", fontWeight: 700, letterSpacing: 1, color: s.color, background: `${s.color}18`, padding: "3px 7px", borderRadius: 3, alignSelf: "center", whiteSpace: "nowrap" }}>{s.tag}</span>
             </div>
@@ -640,19 +681,89 @@ export default function App() {
 
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: "0.68rem", color: "#76FF03", letterSpacing: 2.5, fontFamily: "monospace", fontWeight: 800, marginBottom: 10 }}>HABITS ({habits.length})</div>
-        {habits.map((h) => (
-          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: 4, marginBottom: 4 }}>
-            <span style={{ flex: 1, fontSize: "0.88rem", color: "#ddd" }}>{h.title}</span>
-            <span style={{ fontSize: "0.6rem", color: TAG_COLORS[h.category] || "#888", fontFamily: "monospace", fontWeight: 700 }}>{h.category}</span>
-            <button onClick={() => removeHabit(h.id)} style={btnRemove}>×</button>
+        {habits.map((h) => {
+          const hasTime = h.time && h.duration_min;
+          const dayLabel = hasTime
+            ? (h.active_days && h.active_days.length > 0 && h.active_days.length < 7
+                ? h.active_days.map((d) => DAYS[d]).join("·")
+                : "DAILY")
+            : null;
+          return (
+            <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,0.02)", borderRadius: 4, marginBottom: 4 }}>
+              {hasTime && (
+                <span style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "#666", minWidth: 88 }}>
+                  {h.time} · {h.duration_min}m
+                </span>
+              )}
+              <span style={{ flex: 1, fontSize: "0.88rem", color: "#ddd" }}>{h.title}</span>
+              {hasTime && (
+                <span style={{ fontSize: "0.55rem", color: "#555", fontFamily: "monospace", letterSpacing: 1 }}>{dayLabel}</span>
+              )}
+              <span style={{ fontSize: "0.6rem", color: TAG_COLORS[h.category] || "#888", fontFamily: "monospace", fontWeight: 700 }}>{h.category}</span>
+              <button onClick={() => removeHabit(h.id)} style={btnRemove}>×</button>
+            </div>
+          );
+        })}
+
+        <div style={{ marginTop: 12, padding: 12, background: "rgba(255,255,255,0.02)", borderRadius: 6, border: "1px solid rgba(255,255,255,0.04)" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+            <input value={habitForm.title} onChange={(e) => setHabitForm({ ...habitForm, title: e.target.value })} placeholder="New habit..." style={{ ...inputStd, flex: "2 1 200px" }} />
+            <select value={habitForm.category} onChange={(e) => setHabitForm({ ...habitForm, category: e.target.value })} style={{ ...inputStd, flex: "1 1 110px" }}>
+              {Object.keys(TAG_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
           </div>
-        ))}
-        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <input value={habitForm.title} onChange={(e) => setHabitForm({ ...habitForm, title: e.target.value })} placeholder="New habit..." style={inputStd} />
-          <select value={habitForm.category} onChange={(e) => setHabitForm({ ...habitForm, category: e.target.value })} style={inputStd}>
-            {Object.keys(TAG_COLORS).map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
-          <button onClick={addHabit} style={{ ...btnPrimary, background: "#76FF03" }}>Add</button>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: "0.62rem", color: "#555", fontFamily: "monospace", letterSpacing: 1 }}>OPTIONAL TIME:</span>
+            <input
+              type="time"
+              value={habitForm.time}
+              onChange={(e) => setHabitForm({ ...habitForm, time: e.target.value })}
+              style={{ ...inputStd, flex: "0 0 110px" }}
+            />
+            <input
+              type="number"
+              min={1}
+              max={480}
+              value={habitForm.duration_min}
+              onChange={(e) => setHabitForm({ ...habitForm, duration_min: e.target.value })}
+              placeholder="min"
+              style={{ ...inputStd, flex: "0 0 70px", textAlign: "center" }}
+            />
+            <span style={{ fontSize: "0.6rem", color: "#444", fontFamily: "monospace" }}>min</span>
+            <div style={{ display: "flex", gap: 3, marginLeft: "auto", flexWrap: "wrap" }}>
+              {DAYS.map((d, i) => {
+                const active = habitForm.active_days.includes(i);
+                return (
+                  <button
+                    key={i}
+                    onClick={() => toggleHabitFormDay(i)}
+                    style={{
+                      background: active ? "rgba(118,255,3,0.18)" : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${active ? "rgba(118,255,3,0.4)" : "rgba(255,255,255,0.06)"}`,
+                      color: active ? "#76FF03" : "#666",
+                      fontFamily: "monospace",
+                      fontSize: "0.6rem",
+                      fontWeight: 700,
+                      letterSpacing: 1,
+                      padding: "4px 7px",
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    title={DAYS_FULL[i]}
+                  >
+                    {d.toUpperCase()}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ flex: 1, fontSize: "0.62rem", color: "#444", fontFamily: "monospace", letterSpacing: 0.5, alignSelf: "center" }}>
+              Set time + duration to make this habit appear in TODAY's schedule. No days selected = daily.
+            </div>
+            <button onClick={addHabit} style={{ ...btnPrimary, background: "#76FF03" }}>+ Add</button>
+          </div>
         </div>
       </div>
 
@@ -734,6 +845,7 @@ export default function App() {
       <div style={{ display: "flex", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         {[
           { id: "today", label: "TODAY", color: "#FF3D00" },
+          { id: "focus", label: "FOCUS", color: "#FF6D00" },
           { id: "week", label: "WEEK", color: "#00E5FF" },
           { id: "month", label: "MONTH", color: "#B388FF" },
           { id: "plan", label: "PLAN", color: "#FFD600" },
@@ -752,6 +864,19 @@ export default function App() {
       {view === "ideas" ? (
         <div style={{ height: "calc(100vh - 130px)", maxWidth: 1400, margin: "0 auto", width: "100%" }}>
           <IdeasView />
+        </div>
+      ) : view === "focus" ? (
+        <div style={{ height: "calc(100vh - 130px)", maxWidth: 1400, margin: "0 auto", width: "100%" }}>
+          <FocusView
+            habits={habits}
+            todayTargets={todayJournal.targets || ["", "", ""]}
+            onUpdateTarget={(i, val) => {
+              const targets = [...(todayJournal.targets || ["", "", ""])];
+              targets[i] = val;
+              updateJournal("targets", targets);
+            }}
+            todaysSchedule={todaysSchedule}
+          />
         </div>
       ) : (
         <div style={{ maxWidth: 900, margin: "0 auto" }}>
